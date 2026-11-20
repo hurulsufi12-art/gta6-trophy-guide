@@ -1,248 +1,184 @@
-// Vice Route — view renderers. Pure functions: each takes the app state and
-// returns an HTML string. app.js owns events, storage and navigation.
-import { LEGS, legStats, nextLeg, planTonight, stillMissable } from "./route.js";
+// Vice Route — views: HTML strings for each screen, no DOM writes here.
+// Every trophy's guide is shown with its sources beside it.
 
-export function escHtml(s) {
-  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+import {
+  displayDescription,
+  displayName,
+  gradeCounts,
+  legProgress,
+  missableOpen,
+  nextTonight,
+  tonightReason,
+} from './route.js';
+
+export function escapeHtml(text) {
+  return String(text)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
 }
 
-export function gradeBadge(grade) {
-  return `<span class="badge grade-${grade}">${escHtml(grade)}</span>`;
+export function gradeDot(grade) {
+  return '<span class="dot ' + escapeHtml(grade) + '"></span>' + escapeHtml(grade);
 }
 
-export function bar(done, total) {
+export function progressBar(done, total) {
   const pct = total ? Math.round((100 * done) / total) : 0;
-  return `<div class="meter" role="progressbar" aria-valuenow="${done}" aria-valuemax="${total}" aria-label="${done} of ${total} earned"><span style="width:${pct}%"></span></div><span class="meter-num">${done}/${total} · ${pct}%</span>`;
+  return '<div class="bar"><span style="width:' + pct + '%"></span></div><p class="note">' + done + ' of ' + total + ' earned (' + pct + '%)</p>';
 }
 
-// What a trophy shows under the spoiler setting: story trophies stay
-// masked until they are earned.
-export function trophyVisibility(trophy, earned, spoiler) {
-  const isEarned = earned.has(trophy.id);
-  const masked = spoiler && trophy.kind === "story" && !isEarned;
-  return {
-    isEarned,
-    masked,
-    name: masked ? "??? — story trophy" : trophy.name,
-    description: masked ? "Hidden until earned — turn the spoiler setting off to peek, or earn it in the game." : trophy.description,
-  };
+export function countsBlock(trophies, earned) {
+  const counts = gradeCounts(trophies, earned);
+  const order = ['platinum', 'gold', 'silver', 'bronze'];
+  const cells = order.map((g) => '<span>' + gradeDot(g) + ' <b>' + counts[g][0] + '/' + counts[g][1] + '</b></span>').join('');
+  return '<div class="counts">' + cells + '<span>Total <b>' + earned.size + '/55</b></span></div>';
 }
 
-// Split a guide into its labelled parts for display. Guides are written as
-// "Goal: … Approach: … Missable: … Sources: …" in one string; split on the
-// labels themselves so each part renders under its own heading.
-export function splitGuide(guide) {
-  const text = String(guide);
-  const slice = (from, to) => {
-    const start = text.indexOf(from);
-    if (start === -1) return "";
-    const body = start + from.length;
-    const end = to ? text.indexOf(to, body) : text.length;
-    return text.slice(body, end === -1 ? text.length : end).trim().replace(/\.$/, "");
-  };
-  const parts = {
-    goal: slice("Goal: ", "Approach: "),
-    approach: slice("Approach: ", "Missable: "),
-    missable: slice("Missable: ", "Sources: "),
-    sources: slice("Sources: ", null),
-  };
-  if (!parts.goal && !parts.approach) parts.goal = text;
-  return parts;
-}
-
-export function trophyCard(trophy, state, opts = {}) {
-  const v = trophyVisibility(trophy, state.earned, state.spoiler);
-  const open = state.openId === trophy.id || opts.forceOpen;
-  const parts = splitGuide(trophy.guide);
-  const leg = LEGS.find((l) => l.id === trophy.leg);
-  return `<article class="trophy${v.isEarned ? " earned" : ""}" data-id="${trophy.id}">
-    <div class="trophy-top">
-      <label class="tick"><input type="checkbox" data-earn="${trophy.id}" ${v.isEarned ? "checked" : ""} aria-label="Mark ${escHtml(v.name)} earned"> <span class="tick-box" aria-hidden="true">${v.isEarned ? "✓" : ""}</span></label>
-      <div class="trophy-main">
-        <h3>${escHtml(v.name)}</h3>
-        <p class="trophy-desc">${escHtml(v.description)}</p>
-        <p class="trophy-meta">${gradeBadge(trophy.grade)} <span class="leg-pill">${escHtml(leg ? leg.id + " · " + leg.title : trophy.leg)}</span> <span class="kind-pill">${escHtml(trophy.kind)}</span>${trophy.missable ? ' <span class="miss-pill">⚠ MISSABLE</span>' : ""}</p>
-      </div>
-      <button class="guide-toggle" data-guide="${trophy.id}" aria-expanded="${open}">${open ? "Hide guide ▲" : "Guide ▼"}</button>
-    </div>
-    ${open ? (v.masked
-      ? `<div class="guide-body"><p class="guide-masked">Guide hidden — this is a story trophy. Earn it in the game (or turn the spoiler setting off) to reveal its guide.</p></div>`
-      : `<div class="guide-body">
-        <p><strong>Goal:</strong> ${escHtml(parts.goal)}</p>
-        <p><strong>Approach:</strong> ${escHtml(parts.approach)}</p>
-        <p><strong>Missable:</strong> ${escHtml(parts.missable)}</p>
-        <p class="guide-src"><strong>Sources:</strong> ${escHtml(parts.sources)}</p>
-      </div>`) : ""}
-  </article>`;
-}
-
-export function masthead(state) {
-  const tabs = [
-    ["route", "Route"],
-    ["checklist", "Checklist"],
-    ["session", "Tonight"],
-    ["settings", "Settings"],
-  ];
-  const seedQ = state.seed != null ? `&amp;seed=${state.seed}` : "";
-  return `<header class="mast">
-    <div class="mast-in">
-      <div class="brand"><span class="brand-mark">VR</span><div><h1>VICE ROUTE</h1><p>GTA 6 Platinum Planner · 55 trophies · offline</p></div></div>
-      <nav class="tabs" aria-label="Views">${tabs.map(([v, label]) => `<a class="tab${state.view === v || (v === "route" && state.view === "leg") ? " active" : ""}" href="?view=${v}${seedQ}">${label}</a>`).join("")}</nav>
-    </div>
-  </header>`;
-}
-
-export function summaryPanel(state) {
-  const total = state.trophies.length;
-  const done = state.earned.size;
-  const byGrade = {};
-  for (const t of state.trophies) {
-    byGrade[t.grade] = byGrade[t.grade] || { done: 0, total: 0 };
-    byGrade[t.grade].total += 1;
-    if (state.earned.has(t.id)) byGrade[t.grade].done += 1;
+export function guideBlock(trophy, earned, spoilerOn) {
+  const hidden = spoilerOn && trophy.kind === 'story' && !earned.has(trophy.id);
+  if (hidden) {
+    return '<div class="guide"><p>Guide hidden — the spoiler guard hides story trophies until they are earned.</p><p class="src">Sources: ' + escapeHtml(trophy.sources.join('; ')) + '</p></div>';
   }
-  return `<section class="summary">
-    <div class="summary-big"><span class="summary-num">${done}<small>/${total}</small></span><span class="summary-label">trophies earned</span>${bar(done, total)}</div>
-    <div class="summary-grades">${["platinum", "gold", "silver", "bronze"].map((g) => `<span class="grade-count">${gradeBadge(g)} <b>${byGrade[g] ? byGrade[g].done : 0}/${byGrade[g] ? byGrade[g].total : 0}</b></span>`).join("")}</div>
-    <p class="summary-note">Progress saves in this browser (localStorage). Export it from Settings — never lose a night's work.</p>
-  </section>`;
+  const srcs = (trophy.sources || []).map((s) => escapeHtml(s)).join('; ');
+  return '<div class="guide"><p>' + escapeHtml(trophy.guide) + '</p><p class="src">Sources: ' + srcs + '</p></div>';
 }
 
-export function tonightPanel(state) {
-  const picks = planTonight(state.byId, state.earned);
-  if (!picks.length) return `<section class="tonight"><h2>★ Tonight — platinum earned</h2><p>Every trophy is ticked. Vice Got a Price! is yours.</p></section>`;
-  const seedQ = state.seed != null ? `&amp;seed=${state.seed}` : "";
-  return `<section class="tonight"><h2>★ Tonight — your next 3</h2>
-    <p class="tonight-sub">From the earliest unfinished leg, in earn order.</p>
-    <ol class="tonight-list">${picks.map(({ trophy, reason }, i) => {
-      const v = trophyVisibility(trophy, state.earned, state.spoiler);
-      return `<li><span class="tonight-n">${i + 1}</span><div><strong>${escHtml(v.name)}</strong> ${gradeBadge(trophy.grade)}<p>${escHtml(reason)}</p></div><a class="mini-link" href="?view=leg&amp;leg=${trophy.leg}${seedQ}&amp;open=${trophy.id}">Open guide →</a></li>`;
-    }).join("")}</ol>
-    <p><a class="mini-link" href="?view=session${seedQ}">Full Tonight session →</a></p>
-  </section>`;
+export function trophyRow(trophy, earned, spoilerOn, openId) {
+  const done = earned.has(trophy.id);
+  const miss = trophy.missable ? ' <span class="pill miss">Missable</span>' : '';
+  const check = '<input type="checkbox" data-earn="' + trophy.id + '"' + (done ? ' checked' : '') + ' aria-label="Earned: ' + escapeHtml(displayName(trophy, earned, spoilerOn)) + '">';
+  const name = escapeHtml(displayName(trophy, earned, spoilerOn));
+  const desc = escapeHtml(displayDescription(trophy, earned, spoilerOn));
+  const guide = openId === trophy.id ? guideBlock(trophy, earned, spoilerOn) : '';
+  const toggle = '<button data-guide="' + trophy.id + '">' + (openId === trophy.id ? 'Hide guide' : 'Guide') + '</button>';
+  return '<tr class="' + (done ? 'earned' : '') + '"><td>' + check + '</td><td class="name">' + name + miss + '<br><span style="font-weight:400;color:var(--muted);font-size:13.5px">' + desc + '</span>' + guide + '</td><td>' + gradeDot(trophy.grade) + '</td><td>' + toggle + '</td></tr>';
 }
 
-export function missStrip(state) {
-  const list = stillMissable(state.byId, state.earned);
-  if (!list.length) return `<section class="dontmiss all-clear"><h2>⚠ Don't miss — all clear</h2><p>Every missable story trophy is earned.</p></section>`;
-  return `<section class="dontmiss"><h2>⚠ Don't miss — ${list.length} story trophies still open</h2>
-    <p>Story missions are one pass. Earn these before their phase ends — replay from mission select if the game offers one.</p>
-    <ul>${list.map((t) => `<li>${escHtml(t.name)} <span class="miss-pill">MISSABLE</span></li>`).join("")}</ul>
-  </section>`;
+export function trophyTable(trophies, earned, spoilerOn, openId) {
+  if (!trophies.length) return '';
+  const rows = trophies.map((t) => trophyRow(t, earned, spoilerOn, openId)).join('');
+  return '<table class="list"><thead><tr><th>Earned</th><th>Trophy</th><th>Grade</th><th>Guide</th></tr></thead><tbody>' + rows + '</tbody></table>';
 }
 
-export function routePage(state) {
-  const cur = nextLeg(state.earned);
-  const seedQ = state.seed != null ? `&amp;seed=${state.seed}` : "";
-  return `<main class="page route-page">
-    ${summaryPanel(state)}
-    ${tonightPanel(state)}
-    ${missStrip(state)}
-    <section class="legs"><h2>The route — 7 legs to the platinum</h2>
-    ${LEGS.map((leg) => {
-      const p = legStats(leg, state.earned);
-      const isCur = cur && cur.id === leg.id;
-      return `<a class="leg-card${isCur ? " current" : ""}${p.done === p.total ? " finished" : ""}" href="?view=leg&amp;leg=${leg.id}${seedQ}">
-        <span class="leg-no">LEG ${leg.n}${isCur ? " · YOU ARE HERE" : ""}${p.done === p.total ? " · DONE" : ""}</span>
-        <h3>${escHtml(leg.title)}</h3><p>${escHtml(leg.tag)}</p>
-        ${bar(p.done, p.total)}
-      </a>`;
-    }).join("")}
-    </section>
-    <p class="foot">Sources: Exophase / PSNProfiles — official trophy list. Guides are written fresh for this entry from the official descriptions; where a step is not certain we say so in the guide.</p>
-  </main>`;
+export function renderRoute(data, state) {
+  const { trophies, legs } = data;
+  const { earned, spoilerOn } = state;
+  const legsDone = legProgress(trophies, earned);
+  const miss = missableOpen(trophies, earned);
+  const tonight = nextTonight(trophies, earned);
+  let html = '<h2>The Route to the Platinum</h2>';
+  html += '<p>Seven legs in the order you should earn them. Leg 1 is all missable story trophies — finish each leg before its phase ends.</p>';
+  html += '<div class="card">' + countsBlock(trophies, earned) + progressBar(earned.size, 55) + '</div>';
+  if (miss.length) {
+    const names = miss.slice(0, 6).map((t) => escapeHtml(displayName(t, earned, spoilerOn))).join(', ');
+    html += '<div class="miss-strip"><h3>Don\'t miss — ' + miss.length + ' missable ' + (miss.length === 1 ? 'trophy' : 'trophies') + ' still open</h3><p>' + names + (miss.length > 6 ? ' and ' + (miss.length - 6) + ' more' : '') + '. See the checklist, filtered to Missable, for the full list.</p><p class="note">Spoiler guard is ' + (spoilerOn ? 'ON — story names stay hidden until earned' : 'OFF') + '.</p></div>';
+  } else {
+    html += '<div class="card"><h3>No missable trophies left open</h3><p>Every missable trophy is earned. The rest of the route cannot be missed.</p></div>';
+  }
+  html += '<div class="card"><h3>Tonight — your next session</h3>';
+  if (tonight.length) {
+    html += tonight.map((t, i) => '<p><span class="tonight-num">' + (i + 1) + '</span><b>' + escapeHtml(displayName(t, earned, spoilerOn)) + '</b> — ' + escapeHtml(tonightReason(t, legs)) + '</p>').join('');
+    html += '<p><a href="#/tonight">Open the Tonight planner →</a></p>';
+  } else {
+    html += '<p>Platinum earned. Vice got its price — congratulations, Leonida Legend.</p>';
+  }
+  html += '</div>';
+  html += '<h2>Legs</h2>';
+  for (const leg of legs) {
+    const prog = legsDone.find((p) => p.leg === leg.id) || { earned: 0, total: 0 };
+    html += '<div class="card"><div class="legrow"><h3><a href="#/leg/' + leg.id + '">Leg ' + leg.id + ' — ' + escapeHtml(leg.name) + '</a></h3><span class="pill">' + prog.earned + '/' + prog.total + '</span></div><p class="note">' + escapeHtml(leg.note) + '</p>' + progressBar(prog.earned, prog.total) + '</div>';
+  }
+  return html;
 }
 
-export function legPage(state) {
-  const leg = LEGS.find((l) => l.id === state.leg) || LEGS[0];
-  const p = legStats(leg, state.earned);
-  const trophies = leg.ids.map((id) => state.byId.get(id)).filter(Boolean);
-  const seedQ = state.seed != null ? `&amp;seed=${state.seed}` : "";
-  return `<main class="page leg-page">
-    <p class="crumb"><a href="?view=route${seedQ}">← Route</a> · Leg ${leg.n} of 7</p>
-    <section class="leg-head"><h2>LEG ${leg.n} — ${escHtml(leg.title)}</h2><p>${escHtml(leg.tag)}</p>${bar(p.done, p.total)}
-    <p class="warn">⚠ ${escHtml(leg.warn)}</p></section>
-    <section class="leg-list"><h3>Trophies in earn order — ${p.done}/${p.total} earned</h3>
-    ${trophies.map((t) => trophyCard(t, state)).join("")}
-    </section>
-  </main>`;
+export function renderLeg(data, state, legId, openId) {
+  const { trophies, legs } = data;
+  const { earned, spoilerOn } = state;
+  const leg = legs.find((l) => l.id === legId);
+  if (!leg) return '<p class="note">No such leg.</p><p><a href="#/route">Back to the route →</a></p>';
+  const items = trophies.filter((t) => t.leg === legId).sort((a, b) => a.id - b.id);
+  const done = items.filter((t) => earned.has(t.id)).length;
+  let html = '<p><a href="#/route">← Back to the route</a></p>';
+  html += '<h2>Leg ' + leg.id + ' — ' + escapeHtml(leg.name) + '</h2>';
+  html += '<p>' + escapeHtml(leg.note) + '</p>';
+  html += '<div class="card">' + progressBar(done, items.length) + '</div>';
+  html += '<p class="note">Trophies in earn order. Finish this leg before its phase ends — ' + (legId === 1 ? 'every trophy here is missable.' : 'then move on to the next leg.') + '</p>';
+  html += trophyTable(items, earned, spoilerOn, openId);
+  return html;
 }
 
-export function checklistPage(state) {
-  const f = state.filters;
-  const q = (f.q || "").toLowerCase();
-  const list = state.trophies.filter((t) => {
-    if (f.leg !== "all" && t.leg !== f.leg) return false;
-    if (f.grade !== "all" && t.grade !== f.grade) return false;
-    if (f.kind === "online") return false;
-    if (f.kind !== "all" && t.kind !== f.kind) return false;
-    if (f.missableOnly && !t.missable) return false;
-    if (f.hideEarned && state.earned.has(t.id)) return false;
-    if (q) {
-      const v = trophyVisibility(t, state.earned, state.spoiler);
-      if (!(`${v.name} ${t.description} ${t.guide}`.toLowerCase().includes(q))) return false;
-    }
-    return true;
-  });
-  const shownEarned = list.filter((t) => state.earned.has(t.id)).length;
-  const chip = (label, active, attrs) => `<button class="fchip${active ? " on" : ""}" ${attrs}>${label}</button>`;
-  const kindCounts = {};
-  for (const t of state.trophies) kindCounts[t.kind] = (kindCounts[t.kind] || 0) + 1;
-  const kindLabel = (k) => k === "all" ? "All kinds" : k === "missable" ? "Missable" : `${k} (${kindCounts[k] || 0})`;
-  return `<main class="page checklist-page">
-    <section class="filters">
-      <h2>Checklist — ${list.length} shown · ${shownEarned} earned</h2>
-      <input id="search" type="search" placeholder="Search a trophy or guide…" value="${escHtml(f.q || "")}" aria-label="Search trophies">
-      <div class="frow"><span class="flabel">Leg</span>${["all", ...LEGS.map((l) => l.id)].map((id) => chip(id === "all" ? "All legs" : id, f.leg === id, `data-f-leg="${id}"`)).join("")}</div>
-      <div class="frow"><span class="flabel">Grade</span>${["all", "platinum", "gold", "silver", "bronze"].map((g) => chip(g === "all" ? "All grades" : g, f.grade === g, `data-f-grade="${g}"`)).join("")}</div>
-      <div class="frow"><span class="flabel">Kind</span>${["all", "story", "missable", "strangers", "activities", "collectibles", "open-world", "grind", "online"].map((k) => chip(kindLabel(k), k === "missable" ? f.missableOnly : f.kind === k, `data-f-kind="${k}"`)).join("")}</div>
-      <div class="frow"><label class="switch"><input type="checkbox" id="hide-earned" ${f.hideEarned ? "checked" : ""}> Hide earned</label>
-      <label class="switch"><input type="checkbox" id="spoiler-toggle" ${state.spoiler ? "checked" : ""}> Spoiler: hide story trophies until earned</label></div>
-    </section>
-    <section class="check-list">
-      ${list.length ? list.map((t) => trophyCard(t, state)).join("") : `<p class="empty">${f.kind === "online" ? "No online trophies: the official list of 55 holds no online trophy, so this filter is honestly empty." : "No trophies match these filters. Try clearing the search or a filter."}</p>`}
-    </section>
-  </main>`;
+export function renderChecklist(data, state) {
+  const { trophies } = data;
+  const { earned, spoilerOn, filter } = state;
+  const kinds = [
+    ['all', 'All'],
+    ['story', 'Story'],
+    ['missable', 'Missable'],
+    ['collectibles', 'Collectibles'],
+    ['activities', 'Activities'],
+    ['online', 'Online'],
+  ];
+  let html = '<h2>Checklist — all 55 trophies</h2>';
+  html += '<p>Official names, descriptions and grades as PlayStation publishes them (Exophase / PSNProfiles). Filters: story, missable, collectibles, activities — and online, which this list honestly has none of.</p>';
+  html += '<div class="card">' + countsBlock(trophies, earned) + progressBar(earned.size, 55) + '</div>';
+  html += '<div class="filters">';
+  for (const [key, label] of kinds) {
+    html += '<button data-kind="' + key + '" class="' + (filter.kind === key ? 'on' : '') + '">' + label + '</button>';
+  }
+  html += '<select data-grade aria-label="Filter by grade"><option value="">All grades</option>' +
+    ['platinum', 'gold', 'silver', 'bronze'].map((g) => '<option value="' + g + '"' + (filter.grade === g ? ' selected' : '') + '>' + g + '</option>').join('') + '</select>';
+  html += '<select data-leg aria-label="Filter by leg"><option value="">All legs</option>' +
+    [1, 2, 3, 4, 5, 6, 7].map((n) => '<option value="' + n + '"' + (filter.leg === n ? ' selected' : '') + '>Leg ' + n + '</option>').join('') + '</select>';
+  html += '<input type="search" data-search placeholder="Search name or guide…" value="' + escapeHtml(filter.search || '') + '" aria-label="Search trophies">';
+  html += '<label><input type="checkbox" data-missable-only' + (filter.missableOnly ? ' checked' : '') + '> Missable only</label>';
+  html += '<label><input type="checkbox" data-hide-earned' + (filter.hideEarned ? ' checked' : '') + '> Hide earned</label>';
+  html += '</div>';
+  const shown = state.filtered;
+  if (filter.kind === 'online') {
+    html += '<div class="empty"><b>No online trophies.</b><br>The official 55-trophy list holds no online trophy, so this filter is honestly empty — nothing here needs a network or another player.</div>';
+  } else if (!shown.length) {
+    html += '<div class="empty">No trophies match these filters. Clear the search or pick another filter.</div>';
+  } else {
+    html += '<p class="note">Showing ' + shown.length + ' of 55 trophies.</p>';
+    html += trophyTable(shown, earned, spoilerOn, state.openId);
+  }
+  return html;
 }
 
-export function tonightPage(state) {
-  const picks = planTonight(state.byId, state.earned);
-  const cur = nextLeg(state.earned);
-  const seedQ = state.seed != null ? `&amp;seed=${state.seed}` : "";
-  return `<main class="page tonight-page">
-    <section class="tonight-head"><h2>★ Tonight's session</h2>
-    <p>${cur ? `You are on <strong>Leg ${cur.n} — ${escHtml(cur.title)}</strong>. These are the next 3 trophies on the route, in earn order.` : "Every leg is done — the platinum is yours."}</p></section>
-    ${picks.length ? picks.map(({ trophy, reason }, i) => {
-      const v = trophyVisibility(trophy, state.earned, state.spoiler);
-      const parts = splitGuide(trophy.guide);
-      const leg = LEGS.find((l) => l.id === trophy.leg);
-      return `<article class="tonight-card">
-        <span class="tonight-n big">${i + 1}</span>
-        <div><h3>${escHtml(v.name)}</h3>
-        <p class="trophy-meta">${gradeBadge(trophy.grade)} <span class="leg-pill">${escHtml(leg ? "Leg " + leg.n + " · " + leg.title : trophy.leg)}</span>${trophy.missable ? ' <span class="miss-pill">⚠ MISSABLE</span>' : ""}</p>
-        <p class="trophy-desc">${escHtml(v.description)}</p>
-        <p><strong>Why tonight:</strong> ${escHtml(reason)}</p>
-        ${v.masked ? `<p class="guide-masked">Guide hidden until earned (spoiler setting is on).</p>` : `<div class="guide-body"><p><strong>Goal:</strong> ${escHtml(parts.goal)}</p><p><strong>Approach:</strong> ${escHtml(parts.approach)}</p><p><strong>Missable:</strong> ${escHtml(parts.missable)}</p><p class="guide-src"><strong>Sources:</strong> ${escHtml(parts.sources)}</p></div>`}
-        <label class="tick big-tick"><input type="checkbox" data-earn="${trophy.id}" ${state.earned.has(trophy.id) ? "checked" : ""}> Mark earned</label></div>
-      </article>`;
-    }).join("") : `<p class="empty">Nothing left — platinum earned.</p>`}
-    <p><a class="mini-link" href="?view=route${seedQ}">← Back to the route</a></p>
-  </main>`;
+export function renderTonight(data, state) {
+  const { trophies, legs } = data;
+  const { earned, spoilerOn } = state;
+  const picks = nextTonight(trophies, earned);
+  let html = '<h2>Tonight — your next session</h2>';
+  html += '<p>The next 3 trophies from the earliest unfinished leg. One session, three trophies, in route order.</p>';
+  if (!picks.length) {
+    html += '<div class="card"><p>Platinum earned — nothing left for tonight. Vice got its price.</p></div>';
+    return html;
+  }
+  for (const [i, t] of picks.entries()) {
+    const leg = legs.find((l) => l.id === t.leg);
+    html += '<div class="card"><p><span class="tonight-num">' + (i + 1) + '</span><b>' + escapeHtml(displayName(t, earned, spoilerOn)) + '</b> ' + gradeDot(t.grade) + (t.missable ? ' <span class="pill miss">Missable</span>' : '') + '</p>';
+    html += '<p class="note">Leg ' + t.leg + ' — ' + escapeHtml(leg ? leg.name : '') + '</p>';
+    html += '<p><b>Why tonight:</b> ' + escapeHtml(tonightReason(t, legs)) + '</p>';
+    html += guideBlock(t, earned, spoilerOn);
+    html += '<p><label><input type="checkbox" data-earn="' + t.id + '"' + (earned.has(t.id) ? ' checked' : '') + '> Earned</label></p></div>';
+  }
+  html += '<p><a href="#/checklist">Open the full checklist →</a></p>';
+  return html;
 }
 
-export function settingsPage(state) {
-  return `<main class="page settings-page">
-    <section class="set-card"><h2>Settings</h2>
-      <label class="switch big"><input type="checkbox" id="spoiler-toggle" ${state.spoiler ? "checked" : ""}> <span><strong>Spoiler guard</strong><br>Hide the names and descriptions of story trophies until you earn them.</span></label>
-      <p class="set-note">Current progress: <strong>${state.earned.size} / ${state.trophies.length}</strong> trophies earned. Saved in this browser (localStorage) — nothing leaves your device.</p>
-      <div class="set-btns">
-        <button class="btn" id="export-btn">Export progress (JSON)</button>
-        <label class="btn file-btn">Import progress<input type="file" id="import-file" accept="application/json,.json" hidden></label>
-        <button class="btn danger" id="reset-btn">Reset progress</button>
-      </div>
-      <p id="import-msg" class="set-note" aria-live="polite"></p>
-      <h3>About this guide</h3>
-      <p>Vice Route is a route planner, not a checklist by kind: 7 legs in earn order, from the story to the platinum. All 55 trophy names, descriptions and grades are the official PlayStation list as Exophase and PSNProfiles publish it. Every guide is written fresh for this entry from the official descriptions and cites its source; where a location or step is not certain, the guide says so instead of inventing one. No Rockstar logo or artwork, no network requests — the whole guide runs offline from its own files.</p>
-    </section>
-  </main>`;
+export function renderSettings(data, state) {
+  const { trophies } = data;
+  const { earned, spoilerOn } = state;
+  let html = '<h2>Settings</h2>';
+  html += '<div class="card"><h3>Spoiler guard</h3>';
+  html += '<p><label><input type="checkbox" data-spoiler' + (spoilerOn ? ' checked' : '') + '> Hide story trophy names and descriptions until they are earned</label></p>';
+  html += '<p class="note">When on, story trophies you have not earned show as “Hidden story trophy”. Earned trophies always show in full. The guard covers the ' + trophies.filter((t) => t.kind === 'story').length + ' story trophies.</p></div>';
+  html += '<div class="card"><h3>Your progress — export, import, reset</h3>';
+  html += '<p>' + earned.size + ' of 55 trophies earned. Progress saves in this browser (localStorage) and never leaves it unless you export it.</p>';
+  html += '<p><button class="primary" data-export>Export progress as JSON</button> <button data-import-pick>Import progress…</button> <input type="file" data-import-file accept=".json,application/json" hidden> <button data-reset>Reset all progress</button></p>';
+  html += '<p class="note" data-import-status></p></div>';
+  html += '<div class="card"><h3>About the data</h3><p class="note">Names, descriptions and grades are the official PlayStation list as Exophase and PSNProfiles publish it. Each guide is written fresh for this entry from the official description and cites its sources beside it. Where a place or step is not pinned down by the official description, the guide says so instead of inventing one. The app makes no network requests: it loads only its own files.</p></div>';
+  return html;
 }

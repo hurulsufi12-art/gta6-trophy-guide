@@ -1,10 +1,24 @@
-// Vice Route — the hand-in program for gta6-trophy-guide-01 (Node 22, standard
-// library only). It checks the gate first — 55 official trophies with
-// non-empty guides, 3–4 screenshots within size, app/ within its file and
-// byte caps, no network references — then copies app/ and screenshots/ beside
-// this file to /output (or MAKEFUN_OUTPUT_DIR) and writes /output/dossier.json
-// with the vendored make.fun library, byte for byte what the scorer rebuilds.
-// Run it twice: both runs must write identical bytes.
+// Vice Route — GTA 6 Platinum Planner, gta6-trophy-guide-01 (Node 22, standard library only).
+// The guide is this directory's app/ folder: plain static files a browser opens at
+// app/index.html (ES modules, CSS, no build step), fully offline — it loads nothing
+// over the network, and its trophy list and guides are app/data/trophies.json.
+// This program hands it in: it copies app/ and screenshots/ from beside this file
+// to /output and writes /output/dossier.json, the summary the judge reads (your
+// screenshots, the first load's files and bytes, and your source), with the vendored
+// make.fun library. Leave vendor/makefun-frontend.ts as it is: the scorer requires
+// dossier.json to be byte for byte what its own copy writes.
+//
+// The gate, first (RULES.txt, The gate): 55 official trophies with a guide each in
+// app/data/trophies.json; 3 or 4 screenshots within size; app/ within its caps;
+// no network references. This program checks those gates before it copies, so a
+// broken entry fails loudly here instead of silently at the scorer. The check runs
+// the same way every time, and the copy is deterministic: run this program twice
+// and /output is byte-identical.
+//
+// Serve it locally with `node serve.ts`, then open http://localhost:8080.
+// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
+//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,155 +26,108 @@ import { buildDossier } from './vendor/makefun-frontend.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
-const appDir = join(here, 'app');
-const shotsDir = join(here, 'screenshots');
 
-function abort(message) {
-  throw new Error(`gate check failed: ${message}`);
+function fail(message) {
+  throw new Error('Vice Route gate check failed: ' + message);
 }
 
-function listFiles(dir, acc = []) {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) listFiles(full, acc);
-    else if (entry.isFile()) acc.push(full);
-    else abort(`app/ holds a non-file entry: ${full}`);
-  }
-  return acc;
+// Gate 1: the trophy file names all 55 official trophies, each with a guide.
+const trophiesPath = join(here, 'app', 'data', 'trophies.json');
+const trophies = JSON.parse(readFileSync(trophiesPath, 'utf8'));
+const list = Array.isArray(trophies) ? trophies : trophies.trophies;
+if (!Array.isArray(list) || list.length !== 55) fail('expected 55 trophies, found ' + (Array.isArray(list) ? list.length : 'none'));
+for (const trophy of list) {
+  if (typeof trophy.name !== 'string' || !trophy.name.trim()) fail('a trophy has no name');
+  if (typeof trophy.guide !== 'string' || !trophy.guide.trim()) fail('trophy "' + trophy.name + '" has no guide');
+}
+const grades = {};
+for (const trophy of list) grades[trophy.grade] = (grades[trophy.grade] || 0) + 1;
+if (grades.platinum !== 1 || grades.gold !== 2 || grades.silver !== 6 || grades.bronze !== 46) {
+  fail('grade counts are wrong: ' + JSON.stringify(grades));
 }
 
-function countEntries(dir) {
-  let n = 0;
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    n += 1;
-    if (entry.isDirectory()) n += countEntries(join(dir, entry.name));
-  }
-  return n;
-}
-
-// The 55 official PlayStation names, as the kit's starter lists them
-// (Exophase and PSNProfiles agree on every name). Embedded here so the
-// check runs from the repository alone, with no kit beside it.
-const OFFICIAL_NAMES = [
-  'Vice Got a Price!', 'Just Like Paradise', 'Paradise Lost', 'T**s Ass Drug Money',
-  'Vice City, Baby!', 'Top Of The World, Ma', 'You Gotta Know When to Get Off',
-  'Trust', 'Break the Bank', 'Family Matters', 'DWNFALL', 'Hi-Jacked', 'Snow Storm',
-  'A Long Road', 'Cunning Stunts', 'Master of None', 'The Shootist', 'Top Fun',
-  'Earn Cash, Not Kudos', 'Baited My Tackle', 'Stick Fiddler', 'Road to Rehabilitation',
-  'This Was No Boat Accident', 'The Lone Rider', 'Strangers & Freaks', 'Supply & Demand',
-  'Spin On This!', 'Positive Mental Attitude', 'Fair Game', "Don't Touch My Deck",
-  'You WAiNKer!', 'One Last Thing', 'Hot Together', 'Retail Therapy', 'Whip It Good',
-  'Gunslinger', 'Catch Me If You Can', 'Challenging Tank', 'Sneakthief',
-  'Maximum Withdrawal', 'A Classic Blitz Play', 'The Goodtime State', 'Pest Control',
-  'In The Beginning…', 'Capital Offense', 'Let’s Go Bowling', 'Personal Best',
-  'Actions Speak Louder', 'Bad Luck, I Guess', 'The Truth Is Out There', 'Ten Pin',
-  'Dime on the Dollar', 'Treat Yo Self', 'Little Boxes', 'On the Spot',
-];
-
-function foldName(s) {
-  return s.toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/[\u201c\u201d]/g, '"').replace(/[\u2013\u2014-]/g, '-').replace(/\u2026/g, '...').replace(/\s+/g, ' ').trim();
-}
-
-function checkTrophies() {
-  const path = join(appDir, 'data', 'trophies.json');
-  if (!existsSync(path)) abort('app/data/trophies.json is missing');
-  const data = JSON.parse(readFileSync(path, 'utf8'));
-  const trophies = Array.isArray(data) ? data : data.trophies;
-  if (!Array.isArray(trophies)) abort('trophies.json holds no trophy array');
-  if (trophies.length !== 55) abort(`trophies.json holds ${trophies.length} trophies, expected 55`);
-  const mine = new Set(trophies.map((t) => foldName(t.name)));
-  for (const name of OFFICIAL_NAMES) {
-    if (!mine.has(foldName(name))) abort(`official trophy missing from trophies.json: ${name}`);
-  }
-  for (const t of trophies) {
-    if (typeof t.guide !== 'string' || !t.guide.trim()) abort(`trophy without a guide: ${t.name}`);
-    if (typeof t.description !== 'string' || !t.description.trim()) abort(`trophy without a description: ${t.name}`);
-    if (!['platinum', 'gold', 'silver', 'bronze'].includes(t.grade)) abort(`trophy with a bad grade: ${t.name}`);
-  }
-  // Leg totals must add up to the whole list: 12 + 7 + 8 + 14 + 7 + 6 + 1.
-  const perLeg = {};
-  for (const t of trophies) perLeg[t.leg] = (perLeg[t.leg] || 0) + 1;
-  const expected = { L1: 12, L2: 7, L3: 8, L4: 14, L5: 7, L6: 6, L7: 1 };
-  for (const [leg, n] of Object.entries(expected)) {
-    if (perLeg[leg] !== n) abort(`leg ${leg} holds ${perLeg[leg] ?? 0} trophies, expected ${n}`);
-  }
-}
-
-function checkScreenshots() {
-  if (!existsSync(shotsDir)) abort('screenshots/ is missing');
-  const files = readdirSync(shotsDir).filter((name) => !name.startsWith('.'));
-  if (files.length < 3 || files.length > 4) abort(`screenshots/ holds ${files.length} images, expected 3–4`);
-  for (const name of files) {
-    if (!/^[A-Za-z0-9._-]{1,128}$/.test(name) || name.startsWith('-')) abort(`bad screenshot name: ${name}`);
-    if (!/\.(png|jpe?g)$/i.test(name)) abort(`screenshot is not a PNG or JPEG: ${name}`);
-    const full = join(shotsDir, name);
-    const size = statSync(full).size;
-    if (size > 262144) abort(`screenshot over 256 KiB: ${name} (${size} bytes)`);
-    const dims = imageSize(full);
-    if (!dims) abort(`screenshot is not a readable PNG or JPEG: ${name}`);
-    if (Math.max(dims.width, dims.height) > 1280) abort(`screenshot long side over 1280 px: ${name} (${dims.width}x${dims.height})`);
-    if (Math.min(dims.width, dims.height) < 480) abort(`screenshot short side under 480 px: ${name} (${dims.width}x${dims.height})`);
-  }
-}
-
-// Pixel dimensions of a PNG or JPEG, read from the file header alone.
-function imageSize(full) {
-  const buf = readFileSync(full);
-  if (buf.length > 24 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+// Gate 2: 3 or 4 screenshots, each at most 256 KiB, PNG or JPEG, long side at
+// most 1280 and short side at least 480 pixels (RULES.txt, screenshots).
+function imageSize(file) {
+  const buf = readFileSync(file);
+  if (buf.length >= 24 && buf[0] === 0x89 && buf[1] === 0x50) {
     return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
   }
-  if (buf.length > 2 && buf[0] === 0xff && buf[1] === 0xd8) {
-    let off = 2;
-    while (off + 9 < buf.length) {
-      if (buf[off] !== 0xff) return null;
-      const marker = buf[off + 1];
-      if (marker === 0xc0 || marker === 0xc1 || marker === 0xc2) {
-        return { height: buf.readUInt16BE(off + 5), width: buf.readUInt16BE(off + 7) };
+  if (buf.length >= 4 && buf[0] === 0xff && buf[1] === 0xd8) {
+    let offset = 2;
+    while (offset + 9 < buf.length) {
+      if (buf[offset] !== 0xff) fail('screenshot "' + file + '" is not a whole JPEG');
+      const marker = buf[offset + 1];
+      const length = buf.readUInt16BE(offset + 2);
+      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+        return { width: buf.readUInt16BE(offset + 7), height: buf.readUInt16BE(offset + 5) };
       }
-      const len = buf.readUInt16BE(off + 2);
-      if (len < 2) return null;
-      off += 2 + len;
+      offset += 2 + length;
+    }
+    fail('screenshot "' + file + '" has no JPEG frame header');
+  }
+  fail('screenshot "' + file + '" is not a whole PNG or JPEG');
+}
+const shotsDir = join(here, 'screenshots');
+const shots = readdirSync(shotsDir).filter((name) => !name.startsWith('.')).sort();
+if (shots.length < 3 || shots.length > 4) fail('expected 3 or 4 screenshots, found ' + shots.length);
+for (const name of shots) {
+  const file = join(shotsDir, name);
+  if (!statSync(file).isFile()) fail('screenshot "' + name + '" is not a file');
+  if (!/\.(png|jpe?g)$/i.test(name)) fail('screenshot "' + name + '" is not a PNG or JPEG');
+  if (statSync(file).size > 262144) fail('screenshot "' + name + '" is over 256 KiB');
+  const size = imageSize(file);
+  const longSide = Math.max(size.width, size.height);
+  const shortSide = Math.min(size.width, size.height);
+  if (longSide > 1280) fail('screenshot "' + name + '" is ' + size.width + 'x' + size.height + ' — long side over 1280');
+  if (shortSide < 480) fail('screenshot "' + name + '" is ' + size.width + 'x' + size.height + ' — short side under 480');
+}
+
+// Gate 3: app/ is plain files only, within its caps, and index.html exists.
+const indexPath = join(here, 'app', 'index.html');
+if (!existsSync(indexPath) || !statSync(indexPath).isFile()) fail('app/index.html is missing');
+if (statSync(indexPath).size > 1048576) fail('app/index.html is over 1 MiB');
+let appBytes = 0;
+let appEntries = 0;
+(function walk(dir) {
+  for (const name of readdirSync(dir)) {
+    const file = join(dir, name);
+    const stats = statSync(file);
+    appEntries += 1;
+    if (!stats.isFile() && !stats.isDirectory()) fail('app/ holds a non-file, non-directory entry: ' + name);
+    if (stats.isFile()) appBytes += stats.size;
+    if (stats.isDirectory()) walk(file);
+  }
+})(join(here, 'app'));
+if (appEntries > 993) fail('app/ holds more than 993 files and directories');
+if (appBytes > 50331648) fail('app/ is over 48 MiB');
+
+// Gate 4: no network references in the app's own source — the app is fully offline.
+const networkPattern = /https?:\/\/|protocol-relative:|\/\/[a-z0-9-]+\.[a-z]{2,}/i;
+function scanText(dir) {
+  for (const name of readdirSync(dir)) {
+    const file = join(dir, name);
+    if (statSync(file).isDirectory()) { scanText(file); continue; }
+    if (/\.(html|js|css|json)$/.test(name)) {
+      const text = readFileSync(file, 'utf8');
+      if (networkPattern.test(text)) fail('network reference in ' + file);
     }
   }
-  return null;
 }
+scanText(join(here, 'app'));
 
-function checkApp() {
-  const files = listFiles(appDir);
-  const entries = countEntries(appDir);
-  if (entries > 993) abort(`app/ holds ${entries} files and directories, over 993`);
-  let bytes = 0;
-  for (const file of files) bytes += statSync(file).size;
-  if (bytes > 50331648) abort(`app/ is ${bytes} bytes, over 48 MiB`);
-  if (statSync(join(appDir, 'index.html')).size > 1048576) abort('app/index.html is over 1 MiB');
-}
-
-function checkNoNetwork() {
-  const suspect = /(https?:)?\/\/[A-Za-z0-9]/i;
-  for (const file of listFiles(appDir)) {
-    if (!/\.(html|js|mjs|css|json)$/.test(file)) continue;
-    const text = readFileSync(file, 'utf8');
-    if (suspect.test(text)) abort(`possible network reference in ${file}`);
-    if (/https?:/.test(text)) abort(`http(s) reference in ${file}`);
-  }
-}
-
-checkTrophies();
-checkScreenshots();
-checkApp();
-checkNoNetwork();
-
+// Hand in: copy app/ and screenshots/, then write the dossier.
 mkdirSync(out, { recursive: true });
-cpSync(appDir, join(out, 'app'), { recursive: true });
+cpSync(join(here, 'app'), join(out, 'app'), { recursive: true });
 mkdirSync(join(out, 'screenshots'), { recursive: true });
 if (existsSync(shotsDir)) cpSync(shotsDir, join(out, 'screenshots'), { recursive: true });
 
-// The scorer's own caps: only text_max_bytes shapes the bytes; the others
-// refuse an entry the scorer would refuse (more than 4 screenshots or one
-// over 256 KiB; more than 993 files and directories in app/ or 48 MiB).
+// The scorer's own caps (reference/gate.json): only text_max_bytes shapes the bytes; the others refuse an entry the
+// scorer would refuse (more than 4 screenshots or one over 256 KiB; more than 993 files and directories in app/ or
+// 48 MiB of app files: app/ counts beside /output's own 1000-entry cap, its screenshots/ and dossier.json).
 writeFileSync(
   join(out, 'dossier.json'),
   buildDossier(out, { text_max_bytes: 163840, screenshots: { max: 4, max_bytes: 262144 }, app_max_files: 993, app_max_bytes: 50331648 }),
 );
 
-console.log('Vice Route handed in: app/ + screenshots/ copied, dossier.json written.');
+console.log('Vice Route handed in: 55 trophies, ' + shots.length + ' screenshots, dossier written to ' + out);

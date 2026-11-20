@@ -4,12 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Vice Route — GTA 6 Platinum Planner</title>
-<meta name="description" content="Vice Route: a 7-leg route planner and tracker for all 55 GTA 6 trophies, with cited guides, missable flags and a Tonight session planner. Runs offline.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div id="app" aria-live="polite"><p class="loading">Loading the route to the platinum…</p></div>
-<noscript><p class="load-error">Vice Route needs JavaScript: the tracker, the route and the guides are rendered by the app's own scripts.</p></noscript>
+<header class="top">
+  <h1><span class="vice">VICE</span> <span class="route">ROUTE</span> — GTA 6 Platinum Planner</h1>
+  <p>An offline guide and tracker for all 55 PlayStation 5 trophies of Grand Theft Auto VI. A route, not a checklist: seven legs in the order you should earn them, from the first story mission to the platinum. Progress saves in this browser only; nothing is sent anywhere.</p>
+</header>
+<nav class="tabs" id="tabs">
+  <a href="#/route" data-view="route">Route</a>
+  <a href="#/checklist" data-view="checklist">Checklist (55)</a>
+  <a href="#/tonight" data-view="tonight">Tonight</a>
+  <a href="#/settings" data-view="settings">Settings</a>
+</nav>
+<main id="view"><p class="note">Loading the official trophy list…</p></main>
+<footer>
+  <p>Sources: the official PlayStation 5 trophy list as Exophase and PSNProfiles publish it (names, descriptions and grades); every guide is written fresh for this entry from the official descriptions and cites its sources beside it. Where a place or step is not pinned down by the official description, the guide says so instead of inventing one. No Rockstar Games logo or artwork is used. This guide works fully offline.</p>
+  <p>Keyboard: press <kbd>1</kbd> Route, <kbd>2</kbd> Checklist, <kbd>3</kbd> Tonight, <kbd>4</kbd> Settings.</p>
+</footer>
 <script type="module" src="app.js"></script>
 </body>
 </html>

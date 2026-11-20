@@ -1,92 +1,106 @@
-// Vice Route — the seven legs to the platinum, in earn order. A leg lists
-// its trophy ids in the order a player should earn them. The order follows
-// the legs' phases; no chapter or mission mapping is invented here, and
-// every story trophy's guide names the mission or chapter it belongs to.
-export const LEGS = [
-  { id: "L1", n: 1, title: "Story: The Road to the Finale", tag: "Play the story through — every mission trophy lives here, and all 12 are missable.",
-    warn: "Finish every trophy in this leg before its phase ends — story missions are one pass; replay from mission select if the game offers one.",
-    ids: [2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 7] },
-  { id: "L2", n: 2, title: "Strangers & Freaks", tag: "Seven strangers, eight strands — clear them before the finale.",
-    warn: "Stranger strands stay open, but do them now: after the finale there is no story left to unlock them with.",
-    ids: [22, 23, 24, 26, 27, 29, 25] },
-  { id: "L3", n: 3, title: "Leonida on Wheels & Wings", tag: "Races, stunts, drones, fishing, arcade and bowling — the fun leg.",
-    warn: "No missables here — race and stunt at your own pace.",
-    ids: [18, 19, 15, 20, 21, 46, 51, 16] },
-  { id: "L4", n: 4, title: "Vice City Playground", tag: "Wanted levels, robberies, money and vehicles in the open world.",
-    warn: "No missables here — but keep your wanted level alive on purpose for Retail Therapy.",
-    ids: [33, 34, 35, 55, 39, 41, 43, 45, 36, 37, 38, 44, 52, 53] },
-  { id: "L5", n: 5, title: "The Collector", tag: "52 areas, garages, card sets, photo spots, meditation and the range.",
-    warn: "No missables here — slow, steady collecting; tick areas off as you travel.",
-    ids: [42, 31, 30, 28, 54, 40, 17] },
-  { id: "L6", n: 6, title: "The Long Grind", tag: "100%, 50 challenges and the three vague-description trophies.",
-    warn: "The vague ones (Personal Best, Actions Speak Louder, Bad Luck I Guess, The Truth Is Out There) name no trigger in the official list — leave them for last and check them once everything else is done.",
-    ids: [32, 48, 49, 47, 50, 14] },
-  { id: "L7", n: 7, title: "Platinum", tag: "Vice Got a Price! — the finish line.",
-    warn: "Nothing to do here but finish L1–L6.",
-    ids: [1] },
-];
+// Vice Route — route logic: pure functions over the trophy list, no DOM.
+// Route order is leg order, then the official id order inside a leg.
 
-// The 13 trophies earned in the seeded demo state (13/55): most of Leg 1
-// plus a few scattered wins, so the progress bars and the legs look alive.
-export const SEED_EARNED = [2, 3, 4, 8, 9, 22, 18, 21, 33, 35, 44, 31, 49];
+export const TOTAL_TROPHIES = 55;
+export const STORE_KEY = 'vice-route-earned-v1';
+export const SETTINGS_KEY = 'vice-route-settings-v1';
+export const HIDDEN_NAME = 'Hidden story trophy';
+export const HIDDEN_DESC = 'Hidden until earned — the spoiler guard is on. Earn this trophy to reveal its name and description.';
 
-// Every trophy id, leg by leg, in earn order.
-export function earnOrder() {
-  return LEGS.flatMap((leg) => leg.ids);
+export function routeOrder(trophies) {
+  return [...trophies].sort((a, b) => (a.leg - b.leg) || (a.id - b.id));
 }
 
-// The leg a trophy belongs to, by id.
-export function legFor(id) {
-  for (const leg of LEGS) {
-    if (leg.ids.includes(id)) return leg;
+export function legProgress(trophies, earned) {
+  const legs = {};
+  for (const t of trophies) {
+    const leg = legs[t.leg] || (legs[t.leg] = { leg: t.leg, total: 0, earned: 0 });
+    leg.total += 1;
+    if (earned.has(t.id)) leg.earned += 1;
   }
-  return null;
+  return Object.values(legs).sort((a, b) => a.leg - b.leg);
 }
 
-// Earned count and percentage for one leg.
-export function legStats(leg, earned) {
-  const done = leg.ids.filter((id) => earned.has(id)).length;
-  const total = leg.ids.length;
-  return { done, total, pct: total ? Math.round((100 * done) / total) : 0 };
-}
-
-// The first leg that is not finished yet (null when every leg is done).
-export function nextLeg(earned) {
-  for (const leg of LEGS) {
-    if (leg.ids.some((id) => !earned.has(id))) return leg;
+export function gradeCounts(trophies, earned) {
+  const out = { platinum: [0, 0], gold: [0, 0], silver: [0, 0], bronze: [0, 0] };
+  for (const t of trophies) {
+    if (!out[t.grade]) out[t.grade] = [0, 0];
+    out[t.grade][1] += 1;
+    if (earned.has(t.id)) out[t.grade][0] += 1;
   }
-  return null;
+  return out;
 }
 
-// One line on why a trophy is tonight's pick.
-export function tonightWhy(trophy) {
-  if (trophy.missable) return "Missable story beat — do it before this phase ends.";
-  if (trophy.leg === "L2") return "Stranger strand — finish it before the finale.";
-  if (trophy.leg === "L3") return "Quick activity win — a race, a stunt or a game away.";
-  if (trophy.leg === "L4") return "Open-world job — money, heat or wheels while you roam.";
-  if (trophy.leg === "L5") return "Collector tick — one more area, card or spot off the list.";
-  if (trophy.leg === "L6") return "Long grind — chip away at the count tonight.";
-  return "The finish line — earn everything else first.";
+export function missableOpen(trophies, earned) {
+  return trophies.filter((t) => t.missable && !earned.has(t.id)).sort((a, b) => (a.leg - b.leg) || (a.id - b.id));
 }
 
-// Tonight's session: the next 3 unearned trophies from the earliest
-// unfinished leg, each with its reason. Falls through to later legs so the
-// list is always full until the platinum is earned.
-export function planTonight(trophiesById, earned) {
+export function nextTonight(trophies, earned) {
+  const ordered = routeOrder(trophies);
   const picks = [];
-  for (const id of earnOrder()) {
+  for (const t of ordered) {
     if (picks.length >= 3) break;
-    if (earned.has(id)) continue;
-    const trophy = trophiesById.get(id);
-    if (!trophy) continue;
-    picks.push({ trophy, reason: tonightWhy(trophy) });
+    if (!earned.has(t.id)) picks.push(t);
   }
   return picks;
 }
 
-// Missable trophies not earned yet, in route order — the Don't-miss strip.
-export function stillMissable(trophiesById, earned) {
-  return earnOrder()
-    .map((id) => trophiesById.get(id))
-    .filter((t) => t && t.missable && !earned.has(t.id));
+export function tonightReason(trophy, legs) {
+  const leg = legs.find((l) => l.id === trophy.leg);
+  if (trophy.leg === 1) return 'Story first: this mission trophy can be missed, and the story will not wait.';
+  if (trophy.missable) return 'Missable — earn it now, before its moment passes.';
+  if (leg) return 'Earliest unfinished leg (' + leg.name + '): the route says do this one next.';
+  return 'Next on the route.';
+}
+
+export function isStoryKind(trophy) {
+  return trophy.kind === 'story';
+}
+
+export function displayName(trophy, earned, spoilerOn) {
+  if (spoilerOn && isStoryKind(trophy) && !earned.has(trophy.id)) return HIDDEN_NAME;
+  return trophy.name;
+}
+
+export function displayDescription(trophy, earned, spoilerOn) {
+  if (spoilerOn && isStoryKind(trophy) && !earned.has(trophy.id)) return HIDDEN_DESC;
+  return trophy.description;
+}
+
+// Filter kinds the checklist offers. "online" honestly matches nothing:
+// the official list holds no online trophy.
+export function filterTrophies(trophies, earned, opts) {
+  const q = (opts.search || '').trim().toLowerCase();
+  return trophies.filter((t) => {
+    if (opts.leg && t.leg !== opts.leg) return false;
+    if (opts.grade && t.grade !== opts.grade) return false;
+    if (opts.kind === 'story' && t.kind !== 'story') return false;
+    if (opts.kind === 'missable' && !t.missable) return false;
+    if (opts.kind === 'collectibles' && t.kind !== 'collectibles') return false;
+    if (opts.kind === 'activities' && !['activities', 'playground', 'grind'].includes(t.kind)) return false;
+    if (opts.kind === 'online' && t.kind !== 'online') return false;
+    if (opts.missableOnly && !t.missable) return false;
+    if (opts.hideEarned && earned.has(t.id)) return false;
+    if (q && !(t.name + ' ' + t.description + ' ' + t.guide).toLowerCase().includes(q)) return false;
+    return true;
+  }).sort((a, b) => (a.leg - b.leg) || (a.id - b.id));
+}
+
+export function earnedFromSeed(trophies, count) {
+  const set = new Set();
+  for (const t of routeOrder(trophies).slice(0, count)) set.add(t.id);
+  return set;
+}
+
+export function validateImport(payload, trophies) {
+  if (!payload || typeof payload !== 'object') return { ok: false, error: 'Not a JSON object.' };
+  const ids = payload.earned || payload.trophies || payload.ids;
+  if (!Array.isArray(ids)) return { ok: false, error: 'No earned list found (expected an "earned" array of trophy ids).' };
+  const known = new Set(trophies.map((t) => t.id));
+  const earned = new Set();
+  for (const raw of ids) {
+    const id = Number(raw);
+    if (Number.isInteger(id) && known.has(id)) earned.add(id);
+  }
+  return { ok: true, earned };
 }
