@@ -1,62 +1,75 @@
-# Leonida Platinum — GTA VI Trophy Guide & Tracker
+# Vice Route — GTA 6 Platinum Planner
 
-![make.fun bounty](https://make.fun/badge/gta6-trophy-guide-01.svg)
-![Rank](https://make.fun/badge/gta6-trophy-guide-01/hurulsufi12-art/gta6-trophy-guide/rank.svg)
-![Reward](https://make.fun/badge/gta6-trophy-guide-01/hurulsufi12-art/gta6-trophy-guide/reward.svg)
+[![gta6-trophy-guide-01](https://make.fun/badge/gta6-trophy-guide-01.svg)](https://make.fun/bounty/gta6-trophy-guide-01)
+[![rank](https://make.fun/badge/gta6-trophy-guide-01/hurulsufi12-art/gta6-trophy-guide/rank.svg)](https://make.fun/bounty/gta6-trophy-guide-01)
+[![reward](https://make.fun/badge/gta6-trophy-guide-01/hurulsufi12-art/gta6-trophy-guide/reward.svg)](https://make.fun/bounty/gta6-trophy-guide-01)
 
-An offline, open-source trophy guide and tracker for **Grand Theft Auto VI**
-(PlayStation 5) — a [make.fun](https://make.fun) bounty entry
-(`gta6-trophy-guide-01`). All 55 official trophies with their names,
-descriptions and grades, a guide for each trophy in our own words that cites
-its sources, a roadmap to the platinum, missable flags, and a checklist that
-saves in your browser.
+**Vice Route** is an offline guide and tracker for all 55 GTA 6 trophies on
+PlayStation 5 — built for the
+[make.fun bounty gta6-trophy-guide-01](https://make.fun/bounty/gta6-trophy-guide-01).
 
-## What it does
+## What makes it different
 
-- **Tracker** — tick trophies off as you earn them; progress is saved in
-  `localStorage` and can be exported to / imported from a JSON file.
-- **Filters** — by kind (story, strangers, collectibles, activities, open
-  world, missable, online) and by grade, plus search and a "hide earned"
-  toggle. The official list has no online trophies, so that filter is
-  honestly empty.
-- **Spoiler-safe** — story trophies stay hidden until you earn them.
-- **Roadmap to the platinum** — 6 stages (story → strangers → activities →
-  collectibles → open-world cleanup → 100%), with per-stage progress, and a
-  **Next up** planner that points at the next trophies to chase (missable
-  story trophies first).
-- **Guides with sources** — every trophy's guide names its sources
-  (Exophase / PSNProfiles, the official PlayStation listing). GTA VI launched
-  19 November 2026: where a location or step is not named in the official
-  description, the guide says so instead of inventing one.
-- **Offline** — plain static files, no network requests, no Rockstar artwork.
-  Two themes (paper / night).
+Most trophy guides are a checklist sorted by kind. Vice Route is a **route**:
+7 legs in the order you should earn them, from the story to the platinum.
+
+| Leg | Name | Trophies |
+|-----|------|----------|
+| L1 | Story: The Road to the Finale | 12 — every story mission, all missable |
+| L2 | Strangers & Freaks | 7 — stranger strands + Bret's hunt |
+| L3 | Leonida on Wheels & Wings | 8 — races, stunts, drones, fishing, arcade, bowling |
+| L4 | Vice City Playground | 14 — wanted levels, robberies, money, vehicles |
+| L5 | The Collector | 7 — 52 areas, garages, cards, spots, range |
+| L6 | The Long Grind | 6 — 100%, 50 challenges, the vague ones |
+| L7 | Platinum | 1 — Vice Got a Price! |
+
+- **Route view** — 7 legs with a progress bar each, the "Don't miss" strip
+  (missable story trophies still open), and the Tonight planner.
+- **Leg view** — trophies in earn order with their guide open, plus a
+  warning to finish the leg before its phase ends.
+- **Checklist** — all 55 trophies with filters by leg, grade and kind,
+  missable-only, search, and hide-earned.
+- **Tonight** — a session view: the next 3 trophies from the earliest
+  unfinished leg, each with a reason why tonight.
+- **Settings** — spoiler guard (story trophy names and descriptions stay
+  hidden until earned), export/import of progress as JSON, reset.
+- **Tracker** — progress saves in localStorage; counters per grade and leg.
+
+## Honest sources
+
+All 55 names, descriptions and grades are the official PlayStation list as
+Exophase and PSNProfiles publish it. Every guide is written fresh for this
+entry from the official descriptions and cites its source beside it. GTA VI
+is brand new, so where a location or step is not certain the guide says so
+("our advice from the official description, not yet checked in the game")
+instead of inventing one. No Rockstar logo or artwork; no network requests —
+the whole guide runs offline from its own files.
 
 ## Run it
 
-```sh
-node serve.ts        # serves app/ on http://localhost:8080
+```bash
+node serve.ts   # http://localhost:8080
 ```
 
-or open `app/index.html` from a static server. The entry program hands the
-guide in for judging:
+## Hand it in
 
-```sh
+```bash
 mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 ```
 
-`main.ts` (Node 22, standard library only) validates the guide against the
-gate caps first — 55 trophies with a non-empty guide each, 3–4 screenshots
-of at most 256 KiB — then copies `app/` and `screenshots/` to the output
-directory and writes `dossier.json` with the vendored make.fun library.
+`main.ts` validates the gate first (55 official trophies with guides, 3–4
+screenshots within size, app/ within its caps, no network references), then
+copies `app/` and `screenshots/` and writes `dossier.json` with the vendored
+make.fun library. Run it twice: both runs write identical bytes.
 
-## Layout
+## Files
 
-- `app/index.html`, `app/style.css` — the page and its two themes
-- `app/app.js`, `app/roadmap.js` — tracker, filters, planner, roadmap stages
-- `app/data/trophies.json` — the 55 official trophies, guides and sources
-- `screenshots/` — 4 screenshots of the guide (see `shots.json` for the views)
-- `main.ts` — the entry program; `serve.ts` — a tiny local static server
-
-## License
-
-MIT — see [LICENSE](LICENSE).
+- `main.ts` — hand-in program (Node 22 stdlib only, gate validation first)
+- `serve.ts` — local static server for `app/` and `screenshots/`
+- `vendor/makefun-frontend.ts` — the kit's dossier library, unchanged
+- `app/index.html`, `app/style.css` — page + "Vice Nights" dark neon theme
+- `app/app.js` — boot, progress store, export/import, spoiler, routing
+- `app/route.js` — the 7 legs, the Tonight planner, the seed progress
+- `app/views.js` — the Route / Leg / Checklist / Tonight / Settings views
+- `app/data/trophies.json` — the 55 official trophies with fresh cited guides
+- `screenshots/` — 4 real renders of the app (see `shots.json`)

@@ -1,88 +1,15 @@
-<!doctype html>
-<html lang="en" data-theme="paper">
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Leonida Platinum — the offline GTA VI trophy guide and tracker: all 55 official PlayStation trophies with cited guides, a roadmap to the platinum, missable flags and a spoiler-safe checklist that saves in your browser.">
-<title>Leonida Platinum — GTA VI Trophy Guide &amp; Tracker</title>
+<title>Vice Route — GTA 6 Platinum Planner</title>
+<meta name="description" content="Vice Route: a 7-leg route planner and tracker for all 55 GTA 6 trophies, with cited guides, missable flags and a Tonight session planner. Runs offline.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="masthead">
-  <div class="masthead-text">
-    <p class="kicker">Grand Theft Auto VI &middot; PlayStation 5 &middot; 55 trophies &middot; works offline</p>
-    <h1>Leonida Platinum</h1>
-    <p class="sub">The offline guide &amp; tracker for every GTA VI trophy: the official names,
-    descriptions and grades, a roadmap to the platinum, and a guide for each trophy
-    that cites its sources. No Rockstar artwork — this look is our own.</p>
-  </div>
-  <div class="progress" id="progressBox" aria-label="Progress to the platinum">
-    <div class="big"><span id="earnedCount">0</span><span class="of"> / 55 earned</span></div>
-    <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="55" aria-valuenow="0" id="barWrap"><div id="barFill"></div></div>
-    <p id="gradeCounts" class="counts"></p>
-    <p id="platinumNote" class="counts"></p>
-  </div>
-</header>
-
-<nav class="toolbar" aria-label="Tracker controls">
-  <label class="search">Search <input id="search" type="search" placeholder="Trophy, mission or keyword…" autocomplete="off"></label>
-  <div class="kinds" id="kindFilters" role="group" aria-label="Filter by kind"></div>
-  <label>Grade
-    <select id="grade">
-      <option value="all">All grades</option>
-      <option value="platinum">Platinum</option>
-      <option value="gold">Gold</option>
-      <option value="silver">Silver</option>
-      <option value="bronze">Bronze</option>
-    </select>
-  </label>
-  <label class="check"><input id="hideEarned" type="checkbox"> Hide earned</label>
-  <label class="check"><input id="spoiler" type="checkbox" checked> Spoiler-safe: hide story trophies until earned</label>
-  <button id="theme" type="button" title="Switch paper / night theme">Night theme</button>
-  <button id="export" type="button">Export progress</button>
-  <label class="import">Import progress <input id="import" type="file" accept="application/json,.json"></label>
-  <span class="progress-pill" id="toolbarProgress" aria-label="Trophies earned"></span>
-</nav>
-
-<noscript><p class="noscript">This trophy tracker needs JavaScript: the checklist, filters, roadmap and progress saving are all built in your browser from the trophy data. The full list of all 55 official trophies lives in <code>app/data/trophies.json</code>.</p></noscript>
-
-<section class="nextup" id="nextup" aria-label="Next up planner">
-  <h2>Next up — your platinum planner</h2>
-  <p class="hint">The next trophies to chase, in roadmap order — missable story trophies first, then the
-  earliest open stage. Tick one off and the planner moves on.</p>
-  <ol id="nextList"></ol>
-</section>
-
-<section class="roadmap" id="roadmap" aria-label="Roadmap to the platinum">
-  <h2>Roadmap to the platinum</h2>
-  <p class="hint">Built from the official descriptions: story first (the only missable trophies), then
-  strangers, activities, collectibles, open-world cleanup — and 100% last.</p>
-  <div id="stages"></div>
-</section>
-
-<main>
-  <p id="listMeta" class="list-meta" aria-live="polite"></p>
-  <div id="list" class="list"></div>
-  <p id="emptyState" class="empty" hidden></p>
-</main>
-
-<footer>
-  <h2>Sources &amp; honesty note</h2>
-  <p>Every trophy name, description and grade on this page is the official PlayStation listing,
-  as <strong>Exophase</strong> and <strong>PSNProfiles</strong> published it before this guide was
-  written — the two agree on every name, description and grade. Counts (42 Shooting Range challenges,
-  14 drone race locations, 9 activity types, 18 meditation spots, 52 areas, 9 gangs, 8 garage
-  properties, 500 choices) come from that same official listing. Each guide below names its sources
-  beside it. Filter by kind to see each group on its own: story, strangers, collectibles, activities,
-  open world — or the missable cross-cut. The official list has no online trophies, so that filter
-  is honestly empty.</p>
-  <p>GTA VI launched 19 November 2026. Where a guide gives a location or a step, it does so only
-  when the official description names it; anything else is labelled as our reading of the
-  description, not a confirmed in-game fact. This guide invents no locations and copies no other
-  guide's text.</p>
-  <p>Progress is saved in your browser (localStorage) and never leaves it except through Export.
-  The app loads no network resources and works with the network off.</p>
-</footer>
+<div id="app" aria-live="polite"><p class="loading">Loading the route to the platinum…</p></div>
+<noscript><p class="load-error">Vice Route needs JavaScript: the tracker, the route and the guides are rendered by the app's own scripts.</p></noscript>
 <script type="module" src="app.js"></script>
 </body>
 </html>

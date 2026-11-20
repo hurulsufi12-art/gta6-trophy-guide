@@ -1,19 +1,17 @@
-// A tiny static server for the Leonida Platinum guide (Node 22, standard library
-// only), so it can be tried locally without a build step: `node serve.ts` serves
-// app/ on http://localhost:8080 (`--port <n>` for another port). It also serves
-// screenshots/ under /screenshots/, so the screenshots in shots.json can be
-// re-taken against the app as it currently stands. It sends the MIME types a
-// browser needs, refuses any path outside app/ or screenshots/, logs each
-// request to the console, and otherwise does nothing clever: a development
-// convenience, not a web server for the internet.
+// A tiny static server for the Vice Route guide (Node 22, standard library
+// only), so it can be tried locally without a build step: `node serve.ts`
+// serves app/ on http://localhost:8080 and screenshots/ under /screenshots/
+// (`--port <n>` for another port). It sends the MIME types a browser needs,
+// refuses any path outside app/ or screenshots/, and logs each request with
+// its status: a development convenience, not a web server for the internet.
 import { createReadStream, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const base = fileURLToPath(new URL('.', import.meta.url));
-const appRoot = resolve(join(base, 'app'));
-const shotsRoot = resolve(join(base, 'screenshots'));
+const here = fileURLToPath(new URL('.', import.meta.url));
+const appRoot = resolve(join(here, 'app'));
+const shotsRoot = resolve(join(here, 'screenshots'));
 const args = process.argv.slice(2);
 const portIndex = args.indexOf('--port');
 const requested = portIndex === -1 ? 8080 : Number(args[portIndex + 1]);
@@ -35,16 +33,8 @@ const MIME = {
   '.webmanifest': 'application/manifest+json',
 };
 
-// Resolve a request path to a file under one of the two served roots, or null.
-function resolveFile(pathname) {
-  const roots = pathname.startsWith('/screenshots/')
-    ? [[shotsRoot, pathname.slice('/screenshots/'.length)]]
-    : [[appRoot, pathname]];
-  for (const [root, rel] of roots) {
-    const file = resolve(join(root, normalize(rel)));
-    if (file === root || file.startsWith(root + sep)) return file;
-  }
-  return null;
+function inside(root, file) {
+  return file === root || file.startsWith(root + sep);
 }
 
 createServer((request, response) => {
@@ -54,12 +44,16 @@ createServer((request, response) => {
     pathname = decodeURIComponent(url.pathname);
   } catch {
     response.writeHead(400).end('bad request');
+    console.log(`${request.method} ${request.url} -> 400`);
     return;
   }
-  if (pathname.endsWith('/')) pathname += 'index.html';
-  const file = resolveFile(pathname);
-  if (file === null) {
+  const root = pathname.startsWith('/screenshots/') ? shotsRoot : appRoot;
+  const rel = pathname.startsWith('/screenshots/') ? pathname.slice('/screenshots/'.length) : pathname.replace(/^\//, '');
+  const target = rel === '' ? 'index.html' : rel;
+  const file = resolve(join(root, normalize(target)));
+  if (!inside(root, file)) {
     response.writeHead(403).end('forbidden');
+    console.log(`${request.method} ${request.url} -> 403`);
     return;
   }
   let size;
@@ -69,15 +63,16 @@ createServer((request, response) => {
     size = stats.size;
   } catch {
     response.writeHead(404).end('not found');
+    console.log(`${request.method} ${request.url} -> 404`);
     return;
   }
-  console.log(`${request.method} ${url.pathname} -> ${size} bytes`);
   response.writeHead(200, {
     'content-type': MIME[extname(file).toLowerCase()] ?? 'application/octet-stream',
     'content-length': size,
     'cache-control': 'no-store',
   });
   createReadStream(file).pipe(response);
+  console.log(`${request.method} ${request.url} -> 200 (${size} bytes)`);
 }).listen(port, '127.0.0.1', () => {
-  console.log(`app/ is on http://localhost:${port}`);
+  console.log(`app/ is on http://localhost:${port} (screenshots/ under /screenshots/)`);
 });
