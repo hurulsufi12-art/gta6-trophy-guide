@@ -2,18 +2,18 @@
 // The app fetches only its own data/trophies.json at run time and makes no
 // other request: it works with the network off.
 import { SEED_EARNED } from "./route.js";
-import { headerNav, routeView, legView, checklistView, sessionView, settingsView } from "./views.js";
+import { masthead, routePage, legPage, checklistPage, tonightPage, settingsPage } from "./views.js";
 
-const STORE_KEY = "vice-route-v2-progress";
-const SPOILER_KEY = "vice-route-v2-spoiler";
+const PROGRESS_KEY = "vice-route-v3-progress";
+const SPOILER_KEY = "vice-route-v3-spoiler";
 
-const params = new URLSearchParams(location.search);
-const seedParam = params.get("seed");
-const seed = seedParam === null ? null : (Number(seedParam) || 0);
+const query = new URLSearchParams(location.search);
+const seedRaw = query.get("seed");
+const seed = seedRaw === null ? null : (Number(seedRaw) || 0);
 
-function loadEarned() {
+function readEarned() {
   try {
-    const raw = localStorage.getItem(STORE_KEY);
+    const raw = localStorage.getItem(PROGRESS_KEY);
     if (!raw) return null;
     const ids = JSON.parse(raw);
     if (!Array.isArray(ids)) return null;
@@ -23,14 +23,14 @@ function loadEarned() {
   }
 }
 
-function saveEarned(earned) {
+function writeEarned(earned) {
   try {
-    localStorage.setItem(STORE_KEY, JSON.stringify([...earned].sort((a, b) => a - b)));
+    localStorage.setItem(PROGRESS_KEY, JSON.stringify([...earned].sort((a, b) => a - b)));
   } catch { /* storage full or blocked: progress just does not persist */ }
 }
 
-function loadSpoiler() {
-  const q = params.get("spoiler");
+function readSpoiler() {
+  const q = query.get("spoiler");
   if (q === "on") return true;
   if (q === "off") return false;
   try {
@@ -41,15 +41,15 @@ function loadSpoiler() {
   }
 }
 
-function saveSpoiler(on) {
+function writeSpoiler(on) {
   try { localStorage.setItem(SPOILER_KEY, on ? "1" : "0"); } catch { /* ignore */ }
 }
 
-export function exportProgress(earned) {
-  return JSON.stringify({ app: "vice-route-v2", version: 1, earned: [...earned].sort((a, b) => a - b) }, null, 2);
+export function serializeProgress(earned) {
+  return JSON.stringify({ app: "vice-route-v3", version: 1, earned: [...earned].sort((a, b) => a - b) }, null, 2);
 }
 
-export function importProgress(text, knownIds) {
+export function parseProgress(text, knownIds) {
   const data = JSON.parse(text);
   const ids = Array.isArray(data) ? data : data.earned;
   if (!Array.isArray(ids)) throw new Error("not a Vice Route export");
@@ -64,30 +64,30 @@ const state = {
   trophies: [],
   byId: new Map(),
   earned: new Set(),
-  spoiler: loadSpoiler(),
-  view: params.get("view") || "route",
-  leg: params.get("leg") || "L1",
-  openId: params.get("open") ? Number(params.get("open")) : null,
+  spoiler: readSpoiler(),
+  view: query.get("view") || "route",
+  leg: query.get("leg") || "L1",
+  openId: query.get("open") ? Number(query.get("open")) : null,
   seed,
   filters: {
-    q: params.get("q") || "",
-    leg: params.get("fleg") || "all",
-    grade: params.get("fgrade") || "all",
-    kind: params.get("fkind") || "all",
-    missableOnly: params.get("missable") === "1",
-    hideEarned: params.get("hide") === "1",
+    q: query.get("q") || "",
+    leg: query.get("fleg") || "all",
+    grade: query.get("fgrade") || "all",
+    kind: query.get("fkind") || "all",
+    missableOnly: query.get("missable") === "1",
+    hideEarned: query.get("hide") === "1",
   },
 };
 
 function render() {
   const root = document.getElementById("app");
-  const head = headerNav(state);
+  const head = masthead(state);
   let body = "";
-  if (state.view === "leg") body = legView(state);
-  else if (state.view === "checklist") body = checklistView(state);
-  else if (state.view === "session") body = sessionView(state);
-  else if (state.view === "settings") body = settingsView(state);
-  else body = routeView(state);
+  if (state.view === "leg") body = legPage(state);
+  else if (state.view === "checklist") body = checklistPage(state);
+  else if (state.view === "session") body = tonightPage(state);
+  else if (state.view === "settings") body = settingsPage(state);
+  else body = routePage(state);
   root.innerHTML = head + body;
   document.title = "Vice Route — GTA 6 Platinum Planner";
 }
@@ -95,11 +95,11 @@ function render() {
 // Exposed for headless checks: read-only view of the live state.
 window.__vice = {
   state,
-  exportProgress: () => exportProgress(state.earned),
-  importProgress: (text) => importProgress(text, state.byId),
+  exportProgress: () => serializeProgress(state.earned),
+  importProgress: (text) => parseProgress(text, state.byId),
   setEarned: (id, on) => {
     if (on) state.earned.add(id); else state.earned.delete(id);
-    saveEarned(state.earned);
+    writeEarned(state.earned);
     render();
   },
 };
@@ -110,15 +110,15 @@ async function boot() {
   const data = await res.json();
   state.trophies = data.trophies;
   state.byId = new Map(data.trophies.map((t) => [t.id, t]));
-  const saved = loadEarned();
+  const saved = readEarned();
   if (saved) {
     state.earned = saved;
   } else if (seed !== null) {
     // A fresh browser with ?seed=N starts from the seeded demo progress.
     state.earned = new Set(SEED_EARNED.filter((id) => state.byId.has(id)));
-    saveEarned(state.earned);
+    writeEarned(state.earned);
   }
-  if (params.get("spoiler") !== null) saveSpoiler(state.spoiler);
+  if (query.get("spoiler") !== null) writeSpoiler(state.spoiler);
   render();
 
   document.addEventListener("click", (event) => {
@@ -126,7 +126,7 @@ async function boot() {
     if (earnBox) {
       const id = Number(earnBox.dataset.earn);
       if (earnBox.checked) state.earned.add(id); else state.earned.delete(id);
-      saveEarned(state.earned);
+      writeEarned(state.earned);
       render();
       return;
     }
@@ -150,7 +150,7 @@ async function boot() {
       return;
     }
     if (event.target.id === "export-btn") {
-      const blob = new Blob([exportProgress(state.earned)], { type: "application/json" });
+      const blob = new Blob([serializeProgress(state.earned)], { type: "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = "vice-route-progress.json";
@@ -161,7 +161,7 @@ async function boot() {
     if (event.target.id === "reset-btn") {
       if (window.confirm("Reset all progress? This clears every earned trophy.")) {
         state.earned = new Set();
-        saveEarned(state.earned);
+        writeEarned(state.earned);
         render();
       }
     }
@@ -172,10 +172,7 @@ async function boot() {
       state.filters.q = event.target.value;
       const list = document.querySelector(".check-list");
       if (list) {
-        const keep = state.view;
-        state.view = "checklist";
         render();
-        state.view = keep;
         const box = document.getElementById("search");
         if (box) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
       }
@@ -188,7 +185,7 @@ async function boot() {
     }
     if (event.target.id === "spoiler-toggle") {
       state.spoiler = event.target.checked;
-      saveSpoiler(state.spoiler);
+      writeSpoiler(state.spoiler);
       render();
     }
   });
@@ -200,9 +197,9 @@ async function boot() {
     if (!file) return;
     const text = await file.text();
     try {
-      const imported = importProgress(text, state.byId);
+      const imported = parseProgress(text, state.byId);
       state.earned = imported;
-      saveEarned(state.earned);
+      writeEarned(state.earned);
       render();
       const after = document.getElementById("import-msg");
       if (after) after.textContent = `Imported ${imported.size} earned trophies.`;

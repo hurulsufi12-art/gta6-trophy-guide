@@ -8,10 +8,10 @@
 PlayStation 5 — built for the
 [make.fun bounty gta6-trophy-guide-01](https://make.fun/bounty/gta6-trophy-guide-01).
 
-## What makes it different
+## Why a route, not a checklist
 
-Most trophy guides are a checklist sorted by kind. Vice Route is a **route**:
-7 legs in the order you should earn them, from the story to the platinum.
+Most trophy guides sort by kind. Vice Route is a **route**: 7 legs in the
+order you should earn them, from the story to the platinum.
 
 | Leg | Name | Trophies |
 |-----|------|----------|
@@ -28,7 +28,8 @@ Most trophy guides are a checklist sorted by kind. Vice Route is a **route**:
 - **Leg view** — trophies in earn order with their guide open, plus a
   warning to finish the leg before its phase ends.
 - **Checklist** — all 55 trophies with filters by leg, grade and kind,
-  missable-only, search, and hide-earned.
+  missable-only, search, and hide-earned. The official list holds no online
+  trophy, so the online filter honestly shows an empty state.
 - **Tonight** — a session view: the next 3 trophies from the earliest
   unfinished leg, each with a reason why tonight.
 - **Settings** — spoiler guard (story trophy names and descriptions stay
@@ -57,14 +58,14 @@ node serve.ts   # http://localhost:8080
 mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 ```
 
-`main.ts` validates the gate first (55 official trophies with guides, 3–4
+`main.ts` checks the gate first (55 official trophies with guides, 3–4
 screenshots within size, app/ within its caps, no network references), then
 copies `app/` and `screenshots/` and writes `dossier.json` with the vendored
 make.fun library. Run it twice: both runs write identical bytes.
 
 ## Files
 
-- `main.ts` — hand-in program (Node 22 stdlib only, gate validation first)
+- `main.ts` — hand-in program (Node 22 stdlib only, gate checks first)
 - `serve.ts` — local static server for `app/` and `screenshots/`
 - `vendor/makefun-frontend.ts` — the kit's dossier library, unchanged
 - `app/index.html`, `app/style.css` — page + "Vice Nights" dark neon theme
